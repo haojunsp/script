@@ -1,0 +1,488 @@
+#! /bin/bash
+
+echo Start.
+file_name="A"
+array1=(RA RG)
+array2=(YC YT)
+array3=(MA MC)
+array4=(KG KT)
+array5=(SG SC)
+array6=(WA WT)
+array7=(HA HT HC)
+array8=(BG BT BC)
+array9=(VG VA VC)
+array10=(DG DA DT)
+array11=(NA NT NC NG)
+degenerate_bases_table=(${array1[@]} ${array2[@]} ${array3[@]} ${array4[@]} ${array5[@]} ${array6[@]} ${array7[@]} ${array8[@]} ${array9[@]} ${array10[@]} ${array11[@]})
+degenerate_bases_replace_table=(RAG YCT MAC KGT SGC WAT HATC BGTC VGAC DGAT NATCG HAY HTM HCW BGY BTS BCK VGM VAS VCR DGW DAK DTR NAB NTV NCD NGH)
+jianbing="RYMKSWHBVDN"
+the_least_difference=6
+the_least_difference_pos=0
+#replace degenerate bases in primerF to a new one, and store it in degenerate_bases_to_normal_bases temporarily.
+replace_one() {
+	local string="$1"
+	local old_character="$2"
+	local new_character="$3"
+	rm -rf ./degenerate_bases_to_normal_bases/${old_character}_to_${new_character}
+	echo $string > ./degenerate_bases_to_normal_bases/temp
+	#echo sed "s/${old_character}/${new_character}/g" ./degenerate_bases_to_normal_bases/temp
+	sed "s/${old_character}/${new_character}/g" ./degenerate_bases_to_normal_bases/temp >> ./degenerate_bases_to_normal_bases/${old_character}_to_${new_character}
+	rm -rf ./degenerate_bases_to_normal_bases/temp
+}
+
+replace_the_different_bases_to_degenerate_bases() {
+	local old_character="$1"
+	local new_character="$2"
+	local pos="$3"
+	tmp=$(cat ./the_gene_similar_to_the_old_F/${oldF}_and_${gene})
+	let tmplength=${#tmp}
+	let prepos=$pos+1
+	let afterpos=$tmplength-$prepos
+	rm -rf ./the_gene_similar_to_the_old_F/${oldF}_and_${gene}
+	#store it in the_gene_similar_to_the_old_F
+	echo ${tmp:0:$pos}${new_character}${tmp:$prepos:$afterpos} > ./the_gene_similar_to_the_old_F/${oldF}_and_${gene}
+}
+
+#after some degenerate bases are replaced, then we replace other degenerate bases in primerF.
+replace_one_with() {
+	local file="$1"
+	local old_character="$2"
+	local new_character="$3"
+	#echo enter
+	#echo file $file
+	local primerFc=$(cat $file)
+    local h=`basename -a $file`
+	#echo $h
+	echo $primerFc > ./degenerate_bases_to_normal_bases/temp
+	#echo sed "s/${old_character}/${new_character}/g" ./degenerate_bases_to_normal_bases/temp
+	sed "s/${old_character}/${new_character}/g" ./degenerate_bases_to_normal_bases/temp >> ./degenerate_bases_to_normal_bases/${h}_${old_character}_to_${new_character}
+	rm -rf ./degenerate_bases_to_normal_bases/temp
+	file_name="./degenerate_bases_to_normal_bases/${h}_${old_character}_to_${new_character}"
+}
+
+has_character() {
+	local string="$1"
+	local character="$2"
+	local result=$(cat ${string} | grep ${character})
+	if [ -n "$result" ]; then
+		return 1
+	else
+		return 0
+	fi
+}
+
+store_the_least_difference_sub_gene() {
+	local substring_in_gene="$1"
+	local diff="$2"
+	local pos="$3"
+	if [ $the_least_difference -gt $diff ]; then
+		rm -rf ./gene_subsequence/*
+		echo $substring_in_gene > ./gene_subsequence/$substring_in_gene
+		the_least_difference=$diff
+		the_least_difference_pos=$pos
+		echo $substring_in_gene has $diff different characters.
+		let real_pos=$the_least_difference_pos+1
+		echo Now the least difference is $diff characters, and its postion is at $real_pos.
+	fi
+}
+
+normal_bases_contained_in_gene_has_it() {
+	local substring_in_gene="$1"
+	local __primerF="$2"
+	local pos="$3"
+	local empty=$(ls -A ./normal_bases_contained_in_gene/)
+	if [ -n "$empty" ]; then
+		#echo normal_bases_contained_in_gene is not empty
+		for j in ./normal_bases_contained_in_gene/*; do
+		#echo $j
+		#echo result2
+		local result=$(cat $j | grep ${substring_in_gene})
+		if [ -n "$result" ]; then
+		    #echo $substring_in_gene has 0 different character with $__primerF
+			store_the_least_difference_sub_gene $substring_in_gene 0 $pos
+			return 1
+		fi
+		done
+	fi
+	#echo normal_bases_contained_in_gene does not have $substring_in_gene
+    return 0
+}
+
+#count the difference in gene and oldF
+#if it is completely equal or degenerate equal, it will not be counted
+count_diff() {
+	local oldF="$1"
+	#substring in gene
+	local gene="$2"
+	local num="$3"
+	local pos="$4"
+	let diff=0
+	rm -rf ./the_gene_similar_to_the_old_F/${oldF}_and_${gene}
+	echo $oldF > ./the_gene_similar_to_the_old_F/${oldF}_and_${gene}
+	#echo gene is:$gene
+	#echo num:$num
+
+	for k in `seq $num`; do
+		let g=$k-1
+		let different_char=0
+		if [ "${oldF:$g:1}" = "${gene:$g:1}" ];then
+			#completely equal, it will not be counted
+			let diff=$diff
+		else
+			local result=$(echo ${jianbing} | grep ${oldF:$g:1})
+			if [ -n "$result" ]; then
+				local result1=$(echo ${degenerate_bases_table[*]}  | grep ${oldF:$g:1}${gene:$g:1})
+				if [ -n "$result1" ] ; then
+					#degenerate equal, it will not be counted
+					let diff=$diff
+				else
+				    #not equal, it will be counted
+					let diff=$diff+1
+					let different_char=1
+				fi
+			else
+				let diff=$diff+1
+				let different_char=1
+			fi
+		fi
+		if [[ $different_char -eq 1 ]] ; then
+			for h in `seq 27`; do
+			let j=$h-1
+			#check whether the character in oldF and gene is degenerate equal
+			local result2=$(echo ${degenerate_bases_replace_table[$j]}  | grep ${oldF:$g:1} | grep ${gene:$g:1})
+			local repl=${degenerate_bases_replace_table[$j]}
+			if [ -n "$result2" ] && [ "${repl:0:1}" != "${oldF:$g:1}" ] && [ "${repl:0:1}" != "${gene:$g:1}" ]; then
+			replace_the_different_bases_to_degenerate_bases ${oldF:$g:1} ${repl:0:1} $g
+			#echo  ${degenerate_bases_replace_table[$j]} has ${oldF:$g:1} and ${gene:$g:1}
+			break
+			fi
+			done
+		fi
+	done
+	#echo diff:$diff
+	if [ $diff -gt 5 ]; then
+		rm -rf ./the_gene_similar_to_the_old_F/${oldF}_and_${gene}
+		return 0
+	else
+		#echo $gene has $diff different characters with $oldF
+		store_the_least_difference_sub_gene $gene $diff $pos
+		return 1
+	fi
+}
+
+#replace degenerate bases in primerF to a new one, and check whether the gene contains it
+replace_bases_and_check() {
+	local primerF_="$1"
+	local degenerate_bases="$2"
+	local gene_="$3"
+	#replace degenerate bases in primerF to a new one
+	tmp=$(replace_one $primerF_ ${degenerate_bases:0:1} ${degenerate_bases:1:2})
+	#get the normal bases after we replaced new character in primerF
+	normal_bases=$(cat ./degenerate_bases_to_normal_bases/${degenerate_bases:0:1}_to_${degenerate_bases:1:2})
+	#echo replace_bases_and_check
+	#echo ${degenerate_bases:0:1}
+	#echo ${degenerate_bases:1:2}
+	#echo $normal_bases
+	#check whether the gene contains the normal bases
+	has_character $gene_ $normal_bases
+	result=$?
+	if [[ $result -eq 1 ]] ; then
+		echo gene has $normal_bases
+		#this normal bases is contained in the gene, so we store it in normal_bases_contained_in_gene
+		cp ./degenerate_bases_to_normal_bases/${degenerate_bases:0:1}_to_${degenerate_bases:1:2} ./normal_bases_contained_in_gene
+	fi
+}
+
+replace_several_bases_and_check() {
+	local degenerate_bases="$1"
+	local g="$2"
+	local empty=$(ls -A ./normal_bases_contained_in_gene/)
+	if [ -n "$empty" ]; then
+		a=$empty
+	else
+		return
+	fi
+	for f in `ls ./degenerate_bases_to_normal_bases/*_to*`; do
+		local h=`basename -a $f`
+		#echo processing replaced primerF $h
+		local result=$(echo $h | grep ${degenerate_bases:0:1})
+		if [ -z "$result" ]; then
+			#echo $f deos not has ${degenerate_bases:0:1}
+			replace_one_with $f ${degenerate_bases:0:1} ${degenerate_bases:1:2}
+			#echo $file_name
+			d=$(cat $file_name)
+			#echo ${degenerate_bases:0:1}
+			#echo ${degenerate_bases:1:2}
+			#echo $d
+			has_character $g $d
+			result=$?
+			if [[ $result -eq 1 ]] ; then
+				echo gene has $d
+				cp $file_name ./normal_bases_contained_in_gene
+			fi
+		fi
+	done
+}
+
+rm -rf ./gene/tmp_gene
+rm -rf ./gene/gene_sequence
+
+for i in ./gene/*;do
+    base_name=$(echo $i | sed 's/.\{7\}//')
+	has_empty=$(echo $base_name | grep ' ')
+	if [ -n "$has_empty" ]; then
+		name_without_space=$(echo $i | sed 's/.\{7\}//' | tr ' ' '_')
+		cd ./gene
+		chmod 777 *
+		mv "$base_name"  $name_without_space
+		cd ..
+		k="./gene/$base_name"
+		g="./gene/$name_without_space"
+	else
+		g="./gene/$base_name"
+	fi
+	echo Processing $base_name
+	gene_org=$(cat $g)
+	gene_title=$(sed -n '1p' $g)
+	cat $g | sed '1,1d' > ./gene/tmp_gene
+    #echo title is :$gene_title
+	gene=$(cat ./gene/tmp_gene |sed 's/\r$//' | tr -d '\n' | sed 's/[[:space:]]//g')
+    echo $gene > ./gene/gene_sequence
+	#echo Processing gene : 
+	#echo $gene_title
+	#echo $gene
+done
+
+for f in ./old_F/*; do
+    #echo $f
+	primerF=$(cat $f)
+    echo Processing $f : $primerF
+	let num=0;
+	let oldFlength=${#primerF}
+	let genelength=${#gene}
+	#echo genelength:$genelength
+	
+	#1.To get all the degenerate bases contained in primerF or primerR
+	has_character $f R
+	result1=$?
+	if [[ $result1 -eq 1 ]] ; then
+		let num1=${#array1[@]}+1
+		#echo num1:$num1
+		let num=$num+1
+		all_degenerate_bases=(${array1[@]})
+	else
+		let num1=0
+	fi
+	
+	has_character $f Y
+	result2=$?
+	if [[ $result2 -eq 1 ]] ; then
+		let num2=${#array2[@]}+1
+		#echo num2:$num2
+		let num=$num+1
+		all_degenerate_bases=(${all_degenerate_bases[@]} ${array2[*]})
+	else
+		let num2=0
+	fi
+	
+	
+	has_character $f M
+	result3=$?
+	if [[ $result3 -eq 1 ]] ; then
+		let num3=${#array3[@]}+1
+		#echo num3:$num3
+		let num=$num+1
+		all_degenerate_bases=(${all_degenerate_bases[@]} ${array3[*]})
+	else
+		let num3=0
+	fi
+	
+	
+	has_character $f K
+	result4=$?
+	if [[ $result4 -eq 1 ]] ; then
+		let num4=${#array4[@]}+1
+		#echo num4:$num4
+		let num=$num+1
+		all_degenerate_bases=(${all_degenerate_bases[@]} ${array4[*]})
+	else
+		let num4=0
+	fi
+	
+	
+	has_character $f S
+	result5=$?
+	if [[ $result5 -eq 1 ]] ; then
+		let num5=${#array5[@]}+1
+		#echo num5:$num5
+		let num=$num+1
+		all_degenerate_bases=(${all_degenerate_bases[@]} ${array5[*]})
+	else
+		let num5=0
+	fi
+	
+	
+	has_character $f W
+	result6=$?
+	if [[ $result6 -eq 1 ]] ; then
+		let num6=${#array6[@]}+1
+		#echo num6:$num6
+		let num=$num+1
+		all_degenerate_bases=(${all_degenerate_bases[@]} ${array6[*]})
+	else
+		let num6=0
+	fi
+	
+	
+	has_character $f H
+	result7=$?
+	if [[ $result7 -eq 1 ]] ; then
+		let num7=${#array7[@]}+1
+		#echo num7:$num7
+		let num=$num+1
+		all_degenerate_bases=(${all_degenerate_bases[@]} ${array7[*]})
+	else
+		let num7=0
+	fi
+	
+	
+	has_character $f B
+	result8=$?
+	if [[ $result8 -eq 1 ]] ; then
+		let num8=${#array8[@]}+1
+		#echo num8:$num8
+		let num=$num+1
+		all_degenerate_bases=(${all_degenerate_bases[@]} ${array8[*]})
+	else
+		let num8=0
+	fi
+	
+	
+	has_character $f V
+	result9=$?
+	if [[ $result9 -eq 1 ]] ; then
+		let num9=${#array9[@]}+1
+		#echo num9:$num9
+		let num=$num+1
+		all_degenerate_bases=(${all_degenerate_bases[@]} ${array9[*]})
+	else
+		let num9=0
+	fi
+	
+	
+	has_character $f D
+	result10=$?
+	if [[ $result10 -eq 1 ]] ; then
+		let num10=${#array10[@]}+1
+		#echo num10:$num10
+		let num=$num+1
+		all_degenerate_bases=(${all_degenerate_bases[@]} ${array10[*]})
+	else
+		let num10=0
+	fi
+	
+	
+	has_character $f N
+	result11=$?
+	if [[ $result11 -eq 1 ]] ; then
+		let num11=${#array11[@]}+1
+		#echo num11:$num11
+		let num=$num+1
+		all_degenerate_bases=(${all_degenerate_bases[@]} ${array11[*]})
+	else
+		let num11=0
+	fi
+	
+	#echo num:$num
+	#echo ${all_degenerate_bases[@]}
+	rm -rf ./tmp
+	rm -rf ./new_F
+	rm -rf ./degenerate_bases_to_normal_bases/*
+	rm -rf ./normal_bases_contained_in_gene/*
+	rm -rf ./gene_subsequence/
+	mkdir ./gene_subsequence/
+	mkdir ./new_F/
+	rm -rf ./normal_bases_contained_in_gene/
+	mkdir ./normal_bases_contained_in_gene/
+	rm -rf ./degenerate_bases_to_normal_bases/
+	mkdir ./degenerate_bases_to_normal_bases/
+	rm -rf ./the_gene_similar_to_the_old_F/
+	mkdir ./the_gene_similar_to_the_old_F/
+
+	old_s=${all_degenerate_bases[0]}
+	old=${old_s:0:1}
+	#echo old:$old
+	
+	#2.Go through all the degenerate bases contained in primerF or primerR
+	if [[ $num -ne 0 ]] ; then
+	for degenerate_bases in ${all_degenerate_bases[*]}; do
+		replace_several_bases_and_check $degenerate_bases $g
+		replace_bases_and_check $primerF $degenerate_bases $g
+	done
+	fi
+
+	for j in ./normal_bases_contained_in_gene/*; do
+		filename=`basename -a $j`
+		text=`echo $filename | sed 's/_//g' | sed -e 's/to//g'`
+	done
+
+	let len=$genelength-$oldFlength
+	let gene_has_less_than_5_different_character_with_oldF=0
+	#echo len:$len
+	#echo degenerate_bases_table${degenerate_bases_table[*]}
+	#3.Go through the gene, and get all the strings in oldFlength, then compare it to normal_bases_contained_in_gene
+	for k in `seq $len`; do
+		let u=$k-1
+		substring_in_gene=${gene:$u:$oldFlength}
+		#echo $substring_in_gene
+		normal_bases_contained_in_gene_has_it $substring_in_gene $primerF $u
+		result1=$?
+		#echo $result1
+		if [[ $result1 -eq 0 ]] ; then
+		    #count the difference number
+			count_diff $primerF "$substring_in_gene" $oldFlength $u
+			result2=$?
+			if [[ $result2 -eq 1 ]] ; then
+				let gene_has_less_than_5_different_character_with_oldF=1
+			fi
+		else
+			let gene_has_less_than_5_different_character_with_oldF=1
+		fi
+	done
+	
+	if [[ $gene_has_less_than_5_different_character_with_oldF -eq 0 ]] ; then
+		echo There are more than 5 different bases between the primer and the gene sequence, which lacks the improvement significance and does not output the improved primer.
+	else
+		for k in ./gene_subsequence/*; do
+			gene_subsequence_file=$(cat $k)
+			if test -f "./the_gene_similar_to_the_old_F/${primerF}_and_${gene_subsequence_file}"; then
+				gene_similar=$(cat ./the_gene_similar_to_the_old_F/${primerF}_and_${gene_subsequence_file})
+			fi
+            #echo ${primerF}_and_${gene_subsequence_file}
+			#echo gene_similar:$gene_similar
+			let real_pos=$the_least_difference_pos+1
+			if [ -n "$gene_similar" ]; then
+				echo newF is $gene_similar, and its postion is at $real_pos.
+				echo $gene_similar > ./new_F/$gene_similar
+			else
+				echo newF is $gene_subsequence_file, and its postion is at $real_pos.
+				echo $gene_subsequence_file > ./new_F/$gene_subsequence_file
+			fi
+			echo $gene_title
+			let l=$the_least_difference_pos
+			let m=$the_least_difference_pos+$oldFlength
+			let n=$genelength-$m
+			#echo l:$l m:$m n:$n
+			#echo genelength:#genelength
+			echo -e ${gene:0:$l}"\033[47;30m${gene:$the_least_difference_pos:$oldFlength}\033[0m"${gene:$m:$n}
+		done
+	fi
+done
+
+mkdir ./tmp/
+mv ./normal_bases_contained_in_gene/ ./tmp/
+mv ./degenerate_bases_to_normal_bases/ ./tmp/
+mv ./the_gene_similar_to_the_old_F/ ./tmp/
+mv ./gene_subsequence ./tmp/
+rm -rf ./gene/tmp_gene
+rm -rf ./gene/gene_sequence
